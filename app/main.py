@@ -418,9 +418,14 @@ def semantic_search(payload: SearchRequest, db: Session = Depends(get_db)):
         agents = [
             agent
             for agent in agents
-            if industry in agent.industry.casefold()
+            if (
+                isinstance(agent.industry, str)
+                and industry in agent.industry.casefold()
+            )
             or (
-                agent.user.profile is not None
+                agent.user is not None
+                and agent.user.profile is not None
+                and isinstance(agent.user.profile.industry, str)
                 and industry in agent.user.profile.industry.casefold()
             )
         ]
@@ -429,10 +434,15 @@ def semantic_search(payload: SearchRequest, db: Session = Depends(get_db)):
         agents = [
             agent
             for agent in agents
-            if location in (agent.location or "").casefold()
+            if (
+                isinstance(agent.location, str)
+                and location in agent.location.casefold()
+            )
             or (
-                agent.user.profile is not None
-                and location in (agent.user.profile.location or "").casefold()
+                agent.user is not None
+                and agent.user.profile is not None
+                and isinstance(agent.user.profile.location, str)
+                and location in agent.user.profile.location.casefold()
             )
         ]
     result = rank_agents_for_query(payload.query, agents)
