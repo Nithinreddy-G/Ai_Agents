@@ -21,11 +21,6 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    if SEED_DEMO_DATA:
-        with Session(bind=engine) as db:
-            if db.query(User).count() == 0:
-                seed_demo_data(db)
     yield
 
 
