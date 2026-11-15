@@ -97,17 +97,46 @@ def test_public_post_identifies_owner_for_connection_requests(saved_post_api):
 
 
 def test_search_reports_network_agent_count_before_filters(saved_post_api, monkeypatch):
-    client, _, _, _, _ = saved_post_api
+    client, _, _, _, another_token = saved_post_api
     monkeypatch.setattr(main_module, "rank_agents_for_query", lambda query, agents: [])
 
     response = client.post(
         "/api/search",
+        headers={"Authorization": f"Bearer {another_token}"},
         json={"query": "Find a supplier", "industry": "Technology"},
     )
 
     assert response.status_code == 200
     assert response.json()["available_agents"] == 1
     assert response.json()["recommendations"] == []
+
+
+def test_search_excludes_current_users_agents(saved_post_api, monkeypatch):
+    client, _, _, owner_token, _ = saved_post_api
+    monkeypatch.setattr(main_module, "rank_agents_for_query", lambda query, agents: [])
+
+    response = client.post(
+        "/api/search",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"query": "Find a supplier"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available_agents"] == 0
+    assert response.json()["recommendations"] == []
+
+
+def test_search_allows_unauthenticated_requests(saved_post_api, monkeypatch):
+    client, _, _, _, _ = saved_post_api
+    monkeypatch.setattr(main_module, "rank_agents_for_query", lambda query, agents: [])
+
+    response = client.post(
+        "/api/search",
+        json={"query": "Find a supplier"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available_agents"] == 1
 
 
 def test_post_lifecycle_is_owner_only_and_cleans_saved_references(saved_post_api):

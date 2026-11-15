@@ -52,13 +52,13 @@ def describe_match(query: str, agent, profile, recent_posts: list) -> list[str]:
         agent.interests or "",
     ])))
     profile_terms = set(tokenize(" ".join([
-        profile.company_name or "" if profile else "",
-        profile.industry or "" if profile else "",
-        profile.description or "" if profile else "",
-        profile.products or "" if profile else "",
-        profile.services or "" if profile else "",
-        profile.requirements or "" if profile else "",
-        profile.interests or "" if profile else "",
+        profile.company_name if profile else "",
+        profile.industry if profile else "",
+        profile.description if profile else "",
+        profile.products if profile else "",
+        profile.services if profile else "",
+        profile.requirements if profile else "",
+        profile.interests if profile else "",
     ])))
     update_terms = set(tokenize(" ".join(
         " ".join([post.title or "", post.description or "", post.requirements or "", post.category or ""])
@@ -120,14 +120,14 @@ def rank_agents_for_query(query: str, agents: list) -> list[dict]:
         ])
 
         profile_text = " ".join([
-            profile.company_name or "" if profile else "",
-            profile.industry or "" if profile else "",
-            profile.description or "" if profile else "",
-            profile.products or "" if profile else "",
-            profile.services or "" if profile else "",
-            profile.requirements or "" if profile else "",
-            profile.interests or "" if profile else "",
-            profile.location or "" if profile else "",
+            profile.company_name if profile else "",
+            profile.industry if profile else "",
+            profile.description if profile else "",
+            profile.products if profile else "",
+            profile.services if profile else "",
+            profile.requirements if profile else "",
+            profile.interests if profile else "",
+            profile.location if profile else "",
         ])
 
         updates_text = " ".join(

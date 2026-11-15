@@ -12,6 +12,7 @@ from app.models import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -41,6 +42,22 @@ def decode_access_token(token: str):
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
+) -> User:
+    return _get_user_from_credentials(credentials, db)
+
+
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if credentials is None:
+        return None
+    return _get_user_from_credentials(credentials, db)
+
+
+def _get_user_from_credentials(
+    credentials: HTTPAuthorizationCredentials,
+    db: Session,
 ) -> User:
     payload = decode_access_token(credentials.credentials)
     user_id = payload.get("sub")

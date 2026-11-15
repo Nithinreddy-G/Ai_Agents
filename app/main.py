@@ -13,7 +13,7 @@ from app.config import SEED_DEMO_DATA
 from app.database import Base, engine, get_db
 from app.models import Agent, BusinessProfile, ConnectionRequest, Message, Notification, Post, SavedPost, User
 from app.schemas import AgentCreate, BusinessProfileCreate, ConnectionRequestCreate, ConnectionRequestResponse, MessageCreate, PostCreate, PostUpdate, SearchRequest, Token, UserLogin, UserRegister
-from app.security import create_access_token, get_current_user, get_password_hash, verify_password
+from app.security import create_access_token, get_current_user, get_optional_current_user, get_password_hash, verify_password
 from app.semantic import rank_agents_for_query
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -406,17 +406,15 @@ def unsave_post(post_id: int, current_user: User = Depends(get_current_user), db
 def semantic_search(
     payload: SearchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User | None = Depends(get_optional_current_user),
 ):
-    agents = (
-        db.query(Agent)
-        .filter(Agent.user_id != current_user.id)
-        .options(
-            joinedload(Agent.user).joinedload(User.profile),
-            selectinload(Agent.posts),
-        )
-        .all()
-    )
+    query = db.query(Agent)
+    if current_user is not None:
+        query = query.filter(Agent.user_id != current_user.id)
+    agents = query.options(
+        joinedload(Agent.user).joinedload(User.profile),
+        selectinload(Agent.posts),
+    ).all()
 
     available_agents = len(agents)
 
@@ -434,6 +432,22 @@ def semantic_search(
                 and agent.user.profile is not None
                 and isinstance(agent.user.profile.industry, str)
                 and industry in agent.user.profile.industry.casefold()
+            )
+        ]
+    if payload.location:
+        location = payload.location.casefold()
+        agents = [
+            agent
+            for agent in agents
+            if (
+                isinstance(agent.location, str)
+                and location in agent.location.casefold()
+            )
+            or (
+                agent.user is not None
+                and agent.user.profile is not None
+                and isinstance(agent.user.profile.location, str)
+                and location in agent.user.profile.location.casefold()
             )
         ]
     result = rank_agents_for_query(payload.query, agents)

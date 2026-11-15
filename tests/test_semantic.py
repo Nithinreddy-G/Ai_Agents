@@ -70,3 +70,33 @@ def test_rank_agents_uses_local_embedding_similarity(monkeypatch):
     assert model.query == "sustainable cultivation of edible crops"
     assert model.documents[0].startswith("Agent 1 Agriculture")
     assert "Regional harvest partnership" in model.documents[0]
+
+
+def test_rank_agents_handles_missing_user_profile(monkeypatch):
+    from app import semantic
+
+    model = FakeEmbeddingModel()
+    monkeypatch.setattr(semantic, "get_embedding_model", lambda: model)
+
+    result = rank_agents_for_query(
+        "farm logistics",
+        [
+            SimpleNamespace(
+                id=1,
+                user_id=1,
+                user=None,
+                posts=[],
+                name="Independent Farm Scout",
+                industry="Agriculture",
+                summary="",
+                business_goals="",
+                interests="",
+                location="Berlin",
+            )
+        ],
+    )
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Independent Farm Scout"
+    assert result[0]["location"] == "Berlin"
+    assert any("farm" in reason.lower() or "keyword" in reason.lower() for reason in result[0]["reasons"])

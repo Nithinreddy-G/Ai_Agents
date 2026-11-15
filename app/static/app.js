@@ -560,9 +560,14 @@ async function runSearch() {
   status.textContent = 'Searching with the local model. The first run may take longer while model files download.';
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = formHelpers.getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     const response = await fetch('/api/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ query, industry: industry || null, location: location || null }),
     });
     const data = await response.json();
