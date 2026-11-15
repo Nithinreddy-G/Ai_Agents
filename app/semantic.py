@@ -1,3 +1,4 @@
+import re
 import math
 import os
 import re
@@ -99,66 +100,189 @@ def rank_agents_for_query(query: str, agents: list) -> list[dict]:
 
     agent_contexts = []
     documents = []
+
     for agent in agents:
         profile = agent.user.profile if agent.user else None
+
         recent_posts = sorted(
             agent.posts,
             key=lambda post: post.created_at or datetime.min,
             reverse=True,
         )[:5]
-        agent_text = " ".join(
-            [
-                agent.name or "",
-                agent.industry or "",
-                agent.summary or "",
-                agent.business_goals or "",
-                agent.interests or "",
-                agent.location or "",
-            ]
-        )
-        profile_text = " ".join(
-            [
-                profile.company_name or "" if profile else "",
-                profile.industry or "" if profile else "",
-                profile.description or "" if profile else "",
-                profile.products or "" if profile else "",
-                profile.services or "" if profile else "",
-                profile.requirements or "" if profile else "",
-                profile.interests or "" if profile else "",
-                profile.location or "" if profile else "",
-            ]
-        )
+
+        agent_text = " ".join([
+            agent.name or "",
+            agent.industry or "",
+            agent.summary or "",
+            agent.business_goals or "",
+            agent.interests or "",
+            agent.location or "",
+        ])
+
+        profile_text = " ".join([
+            profile.company_name or "" if profile else "",
+            profile.industry or "" if profile else "",
+            profile.description or "" if profile else "",
+            profile.products or "" if profile else "",
+            profile.services or "" if profile else "",
+            profile.requirements or "" if profile else "",
+            profile.interests or "" if profile else "",
+            profile.location or "" if profile else "",
+        ])
+
         updates_text = " ".join(
-            " ".join([post.title or "", post.description or "", post.requirements or "", post.category or ""])
+            " ".join([
+                post.title or "",
+                post.description or "",
+                post.requirements or "",
+                post.category or "",
+            ])
             for post in recent_posts
         )
-        context = " ".join([agent_text, profile_text, updates_text])
-        agent_contexts.append((agent, profile, recent_posts))
+
+        context = " ".join([
+            agent_text,
+            profile_text,
+            updates_text,
+        ])
+
+        agent_contexts.append(
+            (agent, profile, recent_posts)
+        )
+
         documents.append(context)
 
-    model = get_embedding_model()
-    query_embeddings = list(model.query_embed(query))
-    if not query_embeddings:
-        raise RuntimeError("Embedding model returned no query vector")
-    document_embeddings = list(model.passage_embed(documents))
-    if len(document_embeddings) != len(agent_contexts):
-        raise RuntimeError("Embedding model returned an unexpected number of vectors")
+    # Try semantic embedding search first
+    try:
+        model = get_embedding_model()
 
-    query_embedding = query_embeddings[0]
+        query_embeddings = list(model.query_embed(query))
+
+        if not query_embeddings:
+            raise RuntimeError("Embedding model returned no query vector")
+
+        document_embeddings = list(
+            model.passage_embed(documents)
+        )
+
+        if len(document_embeddings) != len(agent_contexts):
+            raise RuntimeError(
+                "Unexpected number of document embeddings"
+            )
+
+        query_embedding = query_embeddings[0]
+
+        ranked = []
+
+        for (agent, profile, recent_posts), embedding in zip(
+            agent_contexts,
+            document_embeddings,
+        ):
+            score = cosine_similarity(
+                query_embedding,
+                embedding,
+            )
+
+            if score > 0:
+                ranked.append({
+                    "agent_id": agent.id,
+                    "user_id": agent.user_id,
+                    "name": agent.name,
+                    "industry": agent.industry,
+                    "location": agent.location or (
+                        profile.location if profile else ""
+                    ),
+                    "score": round(score, 4),
+                    "summary": agent.summary,
+                    "reasons": describe_match(
+                        query,
+                        agent,
+                        profile,
+                        recent_posts,
+                    ),
+                })
+
+        ranked.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+
+        return ranked
+
+    except Exception as e:
+        print(
+            f"WARNING: Semantic search unavailable. "
+            f"Using keyword fallback. Error: {e}"
+        )
+
+    # Fallback: Keyword-based search
+    query_words = set(
+        re.findall(r"[a-z0-9]+", query.lower())
+    )
+
+    stop_words = {
+        "the", "and", "for", "with", "from",
+        "that", "this", "are", "our", "you",
+        "your", "need", "looking", "want",
+        "business", "partner", "partners",
+    }
+
+    query_words -= stop_words
+
+    if not query_words:
+        return []
+
     ranked = []
-    for (agent, profile, recent_posts), embedding in zip(agent_contexts, document_embeddings):
-        score = cosine_similarity(query_embedding, embedding)
-        if score > 0:
-            ranked.append({
-                "agent_id": agent.id,
-                "user_id": agent.user_id,
-                "name": agent.name,
-                "industry": agent.industry,
-                "location": agent.location or (profile.location if profile else ""),
-                "score": round(score, 4),
-                "summary": agent.summary,
-                "reasons": describe_match(query, agent, profile, recent_posts),
-            })
 
-    ranked.sort(key=lambda item: item["score"], reverse=True)
+    for (agent, profile, recent_posts), document in zip(
+        agent_contexts,
+        documents,
+    ):
+        document_words = set(
+            re.findall(r"[a-z0-9]+", document.lower())
+        )
+
+        matched_words = query_words.intersection(
+            document_words
+        )
+
+        if not matched_words:
+            continue
+
+        score = len(matched_words) / len(query_words)
+
+        reasons = describe_match(
+            query,
+            agent,
+            profile,
+            recent_posts,
+        )
+
+        reasons = [
+            reason for reason in reasons
+            if "Embedding similarity found" not in reason
+        ]
+
+        reasons.append(
+            "Keyword matching found related business information."
+        )
+
+        ranked.append({
+            "agent_id": agent.id,
+            "user_id": agent.user_id,
+            "name": agent.name,
+            "industry": agent.industry,
+            "location": agent.location or (
+                profile.location if profile else ""
+            ),
+            "score": round(score, 4),
+            "summary": agent.summary,
+            "reasons": reasons,
+        })
+
+    ranked.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
     return ranked
